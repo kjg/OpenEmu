@@ -77,14 +77,12 @@
 
 - (NSUInteger)availableBytes
 {
-    int availableBytes = 0;
-    TPCircularBufferHead(&buffer, &availableBytes);
-    return availableBytes;
+    return buffer.length - buffer.fillCount;
 }
 
 - (NSUInteger)usedBytes
 {
-    return buffer.length - buffer.fillCount;
+    return buffer.fillCount;
 }
 
 - (NSUInteger)bytesAvailable

@@ -34,9 +34,8 @@
 @interface OEGameAudio : NSObject
 {
     OEGameCore *gameCore;
-    AUGraph     mGraph;
-    AUNode      mConverterNode, mMixerNode, mOutputNode;
-    AudioUnit   mConverterUnit, mMixerUnit, mOutputUnit;
+    
+    AudioQueueRef outputQueue;
     
     float       volume;
 }
@@ -49,5 +48,7 @@
 - (void)startAudio;
 - (void)stopAudio;
 - (void)pauseAudio;
+
+- (void)flushBuffer;
 
 @end
