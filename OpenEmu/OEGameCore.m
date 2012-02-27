@@ -45,6 +45,7 @@
 @synthesize renderDelegate;
 @synthesize frameInterval, owner, frameFinished;
 @synthesize mousePosition;
+@synthesize audio;
 
 static Class GameCoreClass = Nil;
 static NSTimeInterval defaultTimeInterval = 60.0;
@@ -222,6 +223,8 @@ static NSTimeInterval currentTime()
                     [renderDelegate willExecute];
                     
                     [self executeFrameSkippingFrame:willSkipFrame];
+                    [[self audio] flushBuffer];
+                    
                     
                     [renderDelegate didExecute];
                 }

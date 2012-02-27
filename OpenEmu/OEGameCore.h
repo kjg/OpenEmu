@@ -28,6 +28,7 @@
 #import <Cocoa/Cocoa.h>
 #import "OEGameCoreController.h"
 #import "OESystemResponderClient.h"
+#import "OEGameAudio.h"
 
 #ifndef DLog
 
@@ -118,6 +119,7 @@ static inline NSSize NSSizeFromOEIntSize(OEIntSize size)
 
 @property           NSTimeInterval        frameInterval;
 @property           BOOL                  frameFinished;
+@property(weak) OEGameAudio *audio;
 
 - (void)getAudioBuffer:(void *)buffer frameCount:(NSUInteger)frameCount bufferIndex:(NSUInteger)index;
 - (OERingBuffer *)ringBufferAtIndex:(NSUInteger)index;

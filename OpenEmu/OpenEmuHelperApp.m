@@ -544,6 +544,7 @@ static int PixelFormatToBPP(GLenum pixelFormat)
     
     [self setupGameCore];
     
+    [gameCore setAudio:gameAudio];
     // starts the threaded emulator timer
     [gameCore startEmulation];
     
