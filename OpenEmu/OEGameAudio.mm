@@ -29,12 +29,22 @@
 #import "OEGameCore.h"
 #import "TPCircularBuffer.h"
 #import "OERingBuffer.h"
+#include <queue>
 
 typedef struct
 {
     TPCircularBuffer *buffer;
     int channelCount;
 } OEGameAudioContext;
+
+
+@interface OEGameAudio ()
+{
+@public
+    OEGameAudioContext context;
+    std::queue<AudioQueueBufferRef> buffers;
+}
+@end
 
 ExtAudioFileRef recordingFile;
 
@@ -85,14 +95,14 @@ OSStatus RenderCallback(void                       *in,
     int bytesRequested = inNumberFrames * sizeof(SInt16) * context->channelCount;
     availableBytes = MIN(availableBytes, bytesRequested);
     int leftover = bytesRequested - availableBytes;
-    char *outBuffer = ioData->mBuffers[0].mData;
+    char *outBuffer = (char*)ioData->mBuffers[0].mData;
 
     if (leftover > 0) {
         // time stretch
         // FIXME this works a lot better with a larger buffer
         int framesRequested = inNumberFrames;
         int framesAvailable = availableBytes / (sizeof(SInt16) * context->channelCount);
-        StretchSamples((int16_t*)outBuffer, head, framesRequested, framesAvailable, context->channelCount);
+        StretchSamples((int16_t*)outBuffer, (const int16_t*)head, framesRequested, framesAvailable, context->channelCount);
     } else {
         memcpy(outBuffer, head, availableBytes);
     }
@@ -110,15 +120,10 @@ void AQRender(void *inUserData,
               AudioQueueRef           inAQ,
               AudioQueueBufferRef     inBuffer)
 {
-    AudioQueueFreeBuffer(inAQ, inBuffer);
+    OEGameAudio *SELF = (__bridge OEGameAudio*)inUserData;
+    SELF->buffers.push(inBuffer);
 }
 
-
-@interface OEGameAudio ()
-{
-    OEGameAudioContext context;
-}
-@end
 
 @implementation OEGameAudio
 
@@ -154,7 +159,7 @@ void AQRender(void *inUserData,
 
 - (void)startAudio
 {
-    [self createGraph];
+    AudioQueueStart(outputQueue, 0);
 }
 
 - (void)stopAudio
@@ -164,8 +169,6 @@ void AQRender(void *inUserData,
 
 - (void)createGraph
 {
-    OSStatus err;
-    
     AudioStreamBasicDescription mDataFormat;
     NSUInteger channelCount = [gameCore channelCount];
     mDataFormat.mSampleRate = [gameCore frameSampleRate];
@@ -177,10 +180,14 @@ void AQRender(void *inUserData,
     mDataFormat.mChannelsPerFrame = channelCount;
     mDataFormat.mBitsPerChannel = 16;
 
-    context = (OEGameAudioContext){&[gameCore ringBufferAtIndex:0]->buffer, 2};
-    AudioQueueNewOutput(&mDataFormat, AQRender, &context, CFRunLoopGetCurrent(), kCFRunLoopCommonModes, 0, &outputQueue);
+    AudioQueueNewOutput(&mDataFormat, AQRender, (__bridge void*)self, CFRunLoopGetCurrent(), kCFRunLoopCommonModes, 0, &outputQueue);
     
-    AudioQueueStart(outputQueue, 0);
+    for (int i = 0; i < 32; ++i)
+    {
+        AudioQueueBufferRef ref;
+        AudioQueueAllocateBuffer(outputQueue, ([gameCore frameSampleRate] / [gameCore frameInterval]) * [gameCore channelCount] * sizeof(int16_t), &ref);
+        buffers.push(ref);
+    }
     
     //    CFShow(mGraph);
     [self setVolume:[self volume]];
@@ -202,19 +209,24 @@ void AQRender(void *inUserData,
     int availableBytes = 0;
     TPCircularBuffer *ring = &[gameCore ringBufferAtIndex:0]->buffer;
     void *head = TPCircularBufferTail(ring, &availableBytes);
-    AudioQueueBufferRef buffer;
-    OSStatus err = AudioQueueAllocateBuffer(outputQueue, availableBytes, &buffer); 
-    if (err == noErr) {        
-        memcpy(buffer->mAudioData, head, availableBytes);
-        buffer->mAudioDataByteSize = availableBytes;
-        
-        TPCircularBufferConsume(ring, availableBytes);
-        err = AudioQueueEnqueueBuffer (outputQueue, buffer, 0, nil);
-        if (err != noErr) NSLog(@"AudioQueueEnqueueBuffer() error: %d", err);
-    } else {
-        NSLog(@"AudioQueueAllocateBuffer() error: %d", err); 
-        return;
+
+    AudioQueueBufferRef buffer = buffers.front();
+    buffers.pop();
+
+    availableBytes = MIN(buffer->mAudioDataBytesCapacity, availableBytes);
+    
+    if (availableBytes != buffer->mAudioDataBytesCapacity)
+    {
+        StretchSamples((int16_t*)buffer->mAudioData, (int16_t*)head, buffer->mAudioDataBytesCapacity / 4, availableBytes / 4, 2);
     }
+    else
+    {
+        memcpy(buffer->mAudioData, head, availableBytes);
+    }
+    buffer->mAudioDataByteSize = buffer->mAudioDataBytesCapacity;
+    TPCircularBufferConsume(ring, availableBytes);
+    OSStatus err = AudioQueueEnqueueBuffer (outputQueue, buffer, 0, nil);
+    if (err != noErr) NSLog(@"AudioQueueEnqueueBuffer() error: %d", err);
 }
 
 @end
