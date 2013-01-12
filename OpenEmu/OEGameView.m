@@ -501,15 +501,14 @@ static NSString *const _OEScale2xBRFilterName = @"Scale2xBR";
 {
     if(!gameSurfaceRef)
         return nil;
-
     CGLContextObj cgl_ctx = [[self openGLContext] CGLContextObj];
-
+  
     [[self openGLContext] makeCurrentContext];
-
+    
     CGLLockContext(cgl_ctx);
 
-
-    CGRect textureRect = CGRectMake(0, 0, gameScreenSize.width, gameScreenSize.height);
+    CGRect textureRect = CGRectMake(0, 0, self.frame.size.width, self.frame.size.height);
+    
     NSBitmapImageRep *imageRep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
                                                                          pixelsWide:textureRect.size.width
                                                                          pixelsHigh:textureRect.size.height
@@ -521,42 +520,20 @@ static NSString *const _OEScale2xBRFilterName = @"Scale2xBR";
                                                                         bytesPerRow:textureRect.size.width * 4
                                                                        bitsPerPixel:32];
 
+    
     glReadPixels(0, 0, textureRect.size.width, textureRect.size.height, GL_RGBA, GL_UNSIGNED_BYTE, [imageRep bitmapData]);
 
-    IOSurfaceLock(gameSurfaceRef, kIOSurfaceLockReadOnly, NULL);
-
-    vImage_Buffer src = {.data = IOSurfaceGetBaseAddress(gameSurfaceRef),
-        .width = textureRect.size.width,
-        .height = textureRect.size.height,
-        .rowBytes = IOSurfaceGetBytesPerRow(gameSurfaceRef)};
-    vImage_Buffer dest= {.data = [imageRep bitmapData],
-        .width = textureRect.size.width,
-        .height = textureRect.size.height,
-        .rowBytes = 4*textureRect.size.width};
-
-    // Convert IOSurface pixel format to NSBitmapImageRep
-    const uint8_t permuteMap[] = {2,1,0,3};
-    vImagePermuteChannels_ARGB8888(&src, &dest, permuteMap, 0);
-
-    IOSurfaceUnlock(gameSurfaceRef, kIOSurfaceLockReadOnly, NULL);
-
+    CGLUnlockContext(cgl_ctx);
+    
     NSImage *img = nil;
 
-    NSRect extent = NSRectFromCGRect([[self gameCIImage] extent]);
-    int width = extent.size.width;
-    int height = extent.size.height;
-
-    img = [[NSImage alloc] initWithSize:NSMakeSize(width, height)];
+    img = [[NSImage alloc] initWithSize:textureRect.size];
     [img addRepresentation:imageRep];
 
     // this will flip the rep
     [img lockFocusFlipped:YES];
     [imageRep drawInRect:NSMakeRect(0,0,[img size].width, [img size].height)];
     [img unlockFocus];
-
-
-    CGLUnlockContext(cgl_ctx);
-
 
     return img;
 }
