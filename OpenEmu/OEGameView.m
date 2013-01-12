@@ -475,54 +475,10 @@ static NSString *const _OEScale2xBRFilterName = @"Scale2xBR";
             }
         }
 
+        TODO("Now that we have a synchronous -screenshot method, do we still need screenshotHandler?");
         if(screenshotHandler != nil)
         {
-            
-            NSBitmapImageRep *imageRep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
-                                                                                 pixelsWide:textureRect.size.width
-                                                                                 pixelsHigh:textureRect.size.height
-                                                                              bitsPerSample:8
-                                                                            samplesPerPixel:4
-                                                                                   hasAlpha:YES
-                                                                                   isPlanar:NO
-                                                                             colorSpaceName:NSDeviceRGBColorSpace
-                                                                                bytesPerRow:textureRect.size.width * 4
-                                                                               bitsPerPixel:32];
-            
-//            glReadPixels(0, 0, textureRect.size.width, textureRect.size.height, GL_RGBA, GL_UNSIGNED_BYTE, [imageRep bitmapData]);
-
-            IOSurfaceLock(gameSurfaceRef, kIOSurfaceLockReadOnly, NULL);
-            
-            vImage_Buffer src = {.data = IOSurfaceGetBaseAddress(gameSurfaceRef),
-                                .width = textureRect.size.width,
-                               .height = textureRect.size.height,
-                             .rowBytes = IOSurfaceGetBytesPerRow(gameSurfaceRef)};
-            vImage_Buffer dest= {.data = [imageRep bitmapData],
-                                .width = textureRect.size.width,
-                               .height = textureRect.size.height,
-                             .rowBytes = 4*textureRect.size.width};
-            
-            // Convert IOSurface pixel format to NSBitmapImageRep
-            const uint8_t permuteMap[] = {2,1,0,3};
-            vImagePermuteChannels_ARGB8888(&src, &dest, permuteMap, 0);
-            
-            IOSurfaceUnlock(gameSurfaceRef, kIOSurfaceLockReadOnly, NULL);
-            
-            NSImage *img = nil;
-            
-            NSRect extent = NSRectFromCGRect([[self gameCIImage] extent]);
-            int width = extent.size.width; 
-            int height = extent.size.height;  
-                        
-            img = [[NSImage alloc] initWithSize:NSMakeSize(width, height)];
-            [img addRepresentation:imageRep];
-            
-            // this will flip the rep
-            [img lockFocusFlipped:YES];
-            [imageRep drawInRect:NSMakeRect(0,0,[img size].width, [img size].height)];
-            [img unlockFocus];
-            
-            screenshotHandler(img);
+            screenshotHandler([self screenshot]);
             [self setScreenshotHandler:nil];
         }
         
@@ -541,15 +497,79 @@ static NSString *const _OEScale2xBRFilterName = @"Scale2xBR";
     }
 }
 
+- (NSImage *)screenshot
+{
+    if(!gameSurfaceRef)
+        return nil;
+
+    CGLContextObj cgl_ctx = [[self openGLContext] CGLContextObj];
+
+    [[self openGLContext] makeCurrentContext];
+
+    CGLLockContext(cgl_ctx);
+
+
+    CGRect textureRect = CGRectMake(0, 0, gameScreenSize.width, gameScreenSize.height);
+    NSBitmapImageRep *imageRep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
+                                                                         pixelsWide:textureRect.size.width
+                                                                         pixelsHigh:textureRect.size.height
+                                                                      bitsPerSample:8
+                                                                    samplesPerPixel:4
+                                                                           hasAlpha:YES
+                                                                           isPlanar:NO
+                                                                     colorSpaceName:NSDeviceRGBColorSpace
+                                                                        bytesPerRow:textureRect.size.width * 4
+                                                                       bitsPerPixel:32];
+
+    glReadPixels(0, 0, textureRect.size.width, textureRect.size.height, GL_RGBA, GL_UNSIGNED_BYTE, [imageRep bitmapData]);
+
+    IOSurfaceLock(gameSurfaceRef, kIOSurfaceLockReadOnly, NULL);
+
+    vImage_Buffer src = {.data = IOSurfaceGetBaseAddress(gameSurfaceRef),
+        .width = textureRect.size.width,
+        .height = textureRect.size.height,
+        .rowBytes = IOSurfaceGetBytesPerRow(gameSurfaceRef)};
+    vImage_Buffer dest= {.data = [imageRep bitmapData],
+        .width = textureRect.size.width,
+        .height = textureRect.size.height,
+        .rowBytes = 4*textureRect.size.width};
+
+    // Convert IOSurface pixel format to NSBitmapImageRep
+    const uint8_t permuteMap[] = {2,1,0,3};
+    vImagePermuteChannels_ARGB8888(&src, &dest, permuteMap, 0);
+
+    IOSurfaceUnlock(gameSurfaceRef, kIOSurfaceLockReadOnly, NULL);
+
+    NSImage *img = nil;
+
+    NSRect extent = NSRectFromCGRect([[self gameCIImage] extent]);
+    int width = extent.size.width;
+    int height = extent.size.height;
+
+    img = [[NSImage alloc] initWithSize:NSMakeSize(width, height)];
+    [img addRepresentation:imageRep];
+
+    // this will flip the rep
+    [img lockFocusFlipped:YES];
+    [imageRep drawInRect:NSMakeRect(0,0,[img size].width, [img size].height)];
+    [img unlockFocus];
+
+
+    CGLUnlockContext(cgl_ctx);
+
+
+    return img;
+}
+
 // GL render method
 - (void)OE_drawSurface:(IOSurfaceRef)surfaceRef inCGLContext:(CGLContextObj)cgl_ctx usingShader:(OEGameShader *)shader
 {
     glPushClientAttrib(GL_CLIENT_ALL_ATTRIB_BITS);
     glPushAttrib(GL_ALL_ATTRIB_BITS);
-    
+
     // need to add a clear here since we now draw direct to our context
     glClear(GL_COLOR_BUFFER_BIT);
-    
+
     glBindTexture(GL_TEXTURE_RECTANGLE_EXT, gameTexture);
 
     glTexParameteri(GL_TEXTURE_RECTANGLE_EXT, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);

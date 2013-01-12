@@ -49,6 +49,7 @@
 
 @property (copy) void (^screenshotHandler)(NSImage *img);
 - (void) captureScreenshotUsingBlock:(void(^)(NSImage *img))block;
+- (NSImage *)screenshot;
 
 // Rendering methods
 - (void)setupDisplayLink;
