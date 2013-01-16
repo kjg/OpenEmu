@@ -650,6 +650,7 @@ typedef enum : NSUInteger
     [self saveStateWithName:OESaveStateQuicksaveName];
 }
 
+typedef void (^StateSavedCallback)();
 - (void)saveStateWithName:(NSString *)stateName
 {
     NSAssert(_emulationStatus != OEGameViewControllerEmulationStatusNotStarted, @"Cannot save state if emulation has not been set up");
@@ -677,36 +678,41 @@ typedef enum : NSUInteger
                                      return [NSURL URLWithString:[NSString stringWithUUID] relativeToURL:temporaryDirectoryURL];
                                  }];
 
+        StateSavedCallback stateSavedCallback = ^(void) {
+            BOOL      success                = NO;
+            BOOL isSpecialSaveState = [stateName hasPrefix:OESaveStateSpecialNamePrefix];
+            OEDBSaveState *state;
+            if(isSpecialSaveState)
+            {
+                state = [[self rom] saveStateWithName:stateName];
+            }
+
+            if(state == nil)
+                state = [OEDBSaveState createSaveStateNamed:stateName forRom:[self rom] core:[gameCoreManager plugin] withFile:temporaryStateFileURL];
+            else
+            {
+                [state replaceStateFileWithFile:temporaryStateFileURL];
+                [state setTimestamp:[NSDate date]];
+                [state writeInfoPlist];
+            }
+
+            NSImage *screenshotImage = [gameView nativeScreenshot];
+            NSData *TIFFData = [screenshotImage TIFFRepresentation];
+            NSBitmapImageRep *bitmapImageRep = [NSBitmapImageRep imageRepWithData:TIFFData];
+            NSData *PNGData = [bitmapImageRep representationUsingType:NSPNGFileType properties:nil];
+            success = [PNGData writeToURL:[state screenshotURL] atomically: YES];
+
+            if(!success) NSLog(@"Could not create screenshot at url: %@", [state screenshotURL]);
+        };
+
         success = [rootProxy saveStateToFileAtPath:[temporaryStateFileURL path]];
         if(!success)
         {
             NSLog(@"Could not create save state file at url: %@", temporaryStateFileURL);
             return;
         }
+        stateSavedCallback();
 
-        BOOL isSpecialSaveState = [stateName hasPrefix:OESaveStateSpecialNamePrefix];
-        OEDBSaveState *state;
-        if(isSpecialSaveState)
-        {
-            state = [[self rom] saveStateWithName:stateName];
-        }
-
-        if(state == nil)
-            state = [OEDBSaveState createSaveStateNamed:stateName forRom:[self rom] core:[gameCoreManager plugin] withFile:temporaryStateFileURL];
-        else
-        {
-            [state replaceStateFileWithFile:temporaryStateFileURL];
-            [state setTimestamp:[NSDate date]];
-            [state writeInfoPlist];
-        }
-
-        NSImage *screenshotImage = [gameView nativeScreenshot];
-        NSData *TIFFData = [screenshotImage TIFFRepresentation];
-        NSBitmapImageRep *bitmapImageRep = [NSBitmapImageRep imageRepWithData:TIFFData];
-        NSData *PNGData = [bitmapImageRep representationUsingType:NSPNGFileType properties:nil];
-        success = [PNGData writeToURL:[state screenshotURL] atomically: YES];
-
-        if(!success) NSLog(@"Could not create screenshot at url: %@", [state screenshotURL]);
     }
     @finally
     {
