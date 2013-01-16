@@ -325,7 +325,12 @@ static void MupenSetAudioSpeed(int percent)
 {
     // freeze save
     //FIXME how to fit into emu event loop?
-    //CoreDoCommand(M64CMD_STATE_SAVE, 1, (void*)[fileName UTF8String]);
+    CoreDoCommand(M64CMD_STATE_SAVE, 1, (void*)[fileName UTF8String]);
+    NSFileManager *filemgr = [NSFileManager defaultManager];
+    while (![filemgr fileExistsAtPath:fileName])
+    {
+        sleep(1);
+    }
     return YES;
 }
 
